@@ -68,14 +68,18 @@ export default function ReportPage() {
       </div>
 
       {/* Форма формирования отчёта */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Plus className="w-5 h-5 text-blue-600" />
-          <h3 className="font-semibold text-gray-900 dark:text-white">Сформировать новый отчёт</h3>
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-750 rounded-xl border-2 border-blue-300 dark:border-blue-700 p-6 shadow-lg">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+            <Plus className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Сформировать новый отчёт</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Шаг 1: Выберите параметры → Шаг 2: Нажмите кнопку ниже
+            </p>
+          </div>
         </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Выберите параметры и нажмите «Сформировать». Отчёт сохранится и будет доступен для редактирования.
-        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -141,32 +145,39 @@ export default function ReportPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 mt-4 flex-wrap">
-          <div className="flex-1">
-            <input
-              type="text"
-              value={reportName}
-              onChange={(e) => setReportName(e.target.value)}
-              placeholder="Название отчёта (необязательно)"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-            />
+        <div className="mt-6 pt-6 border-t border-blue-200 dark:border-blue-700">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Название отчёта (необязательно)
+              </label>
+              <input
+                type="text"
+                value={reportName}
+                onChange={(e) => setReportName(e.target.value)}
+                placeholder="Например: Простои за ноябрь 2025"
+                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+              />
+            </div>
+            <div className="flex-shrink-0 self-end">
+              <button
+                onClick={handleCreate}
+                disabled={isLoading}
+                className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white text-base font-bold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3 whitespace-nowrap"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                    Формирование отчёта...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5" /> СФОРМИРОВАТЬ ОТЧЁТ
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-          <button
-            onClick={handleCreate}
-            disabled={isLoading}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                Формирование...
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" /> Сформировать отчёт
-              </>
-            )}
-          </button>
         </div>
       </div>
 
