@@ -104,6 +104,110 @@
 
 ---
 
+### [2026-06-20] — Реализован MVP портала (Этап 1)
+
+**Контекст:** Начата поэтапная реализация портала. Создана базовая функциональность для этапа 1 (WSL2, мок-данные).
+
+**Что сделано:**
+
+1. **Типы TypeScript** (`src/types/index.ts`):
+   - Все интерфейсы: DowntimeRecord, ConsolidatedDowntime, IncidentInvestigation, PlannedAction, TimelineEntry, User, Notification, ChatMessage, AttachedFile, AuditLog
+   - Статусы: new / in_progress / resolved / out_of_scope
+   - Фильтры и режимы группировки
+
+2. **Справочник цехов** (`src/data/shops.ts`):
+   - 19 реальных цехов с маппингом полное↔короткое название
+   - Функции getShopShortName / getShopFullName
+
+3. **Мок-данные** (`src/data/mockData.ts`):
+   - Генератор 200 вымышленных записей простоев за 3 месяца
+   - 3 тестовых пользователя (admin, ivanov, petrov)
+   - Генератор разбора инцидента, чата
+
+4. **Абстракция источника данных** (`src/services/dataSource.ts`):
+   - Интерфейс DataSource: getDowntimeRecords, getShops, testConnection
+   - MockDataSource — реализация на вымышленных данных
+   - Функция groupRecords для двух режимов группировки
+   - Утилиты formatDuration, formatShopName
+   - Фабрика createDataSource с поддержкой переменной VITE_DATA_SOURCE
+
+5. **Глобальное состояние** (`src/store/AppContext.tsx`):
+   - Полный контекст приложения с localStorage персистентностью
+   - Авторизация, тема, простои, разборы, чат, уведомления, файлы, аудит
+   - Все CRUD-операции с автоматическим аудитом
+
+6. **Layout** (`src/components/layout/`):
+   - Header: логотип, плашка ДИТ, уведомления с колокольчиком, переключатель темы, профиль пользователя
+   - Sidebar: навигация (Отчёт, Разборы, Аудит, Пользователи, Настройки для админа)
+   - AppLayout: обёртка с Outlet
+
+7. **Страницы:**
+   - LoginPage — вход с тестовыми учётками
+   - ReportPage — фильтры (дата, цех, участок, статус), группировка, сортировка, экспорт в Excel, массовые операции
+   - DowntimeDetailPage — 5 вкладок (Детализация, Разбор, Чат, Файлы, История)
+   - InvestigationsPage — список простоев с разборами
+   - AuditPage — лог действий с фильтрами
+   - UsersPage — список пользователей
+
+8. **Компоненты вкладок:**
+   - InvestigationTab — полный разбор инцидента с редактированием всех полей
+   - ChatTab — чат с сообщениями
+   - FilesTab — загрузка/скачивание/удаление файлов с предпросмотром
+   - AuditTab — история действий по простою
+
+9. **Экспорт:**
+   - exportExcel.ts — выгрузка в .xlsx с детализацией по листам
+   - exportDocx.ts — выгрузка разбора в .docx (Times New Roman, таблицы, заголовки)
+
+10. **Инфраструктура:**
+    - HashRouter для корректной работы SPA на статическом хостинге
+    - Tailwind CSS 4 с dark mode через class strategy
+    - TypeScript strict mode
+
+**Файлы созданы:**
+- `src/types/index.ts`
+- `src/data/shops.ts`
+- `src/data/mockData.ts`
+- `src/services/dataSource.ts`
+- `src/services/exportExcel.ts`
+- `src/services/exportDocx.ts`
+- `src/store/AppContext.tsx`
+- `src/vite-env.d.ts`
+- `src/components/layout/Header.tsx`
+- `src/components/layout/Sidebar.tsx`
+- `src/components/layout/AppLayout.tsx`
+- `src/components/InvestigationTab.tsx`
+- `src/components/ChatTab.tsx`
+- `src/components/FilesTab.tsx`
+- `src/components/AuditTab.tsx`
+- `src/pages/LoginPage.tsx`
+- `src/pages/ReportPage.tsx`
+- `src/pages/DowntimeDetailPage.tsx`
+- `src/pages/InvestigationsPage.tsx`
+- `src/pages/AuditPage.tsx`
+- `src/pages/UsersPage.tsx`
+- `src/App.tsx` (обновлён)
+- `src/index.css` (обновлён)
+- `index.html` (обновлён)
+
+**Установленные пакеты:**
+- docx — экспорт в Word
+- file-saver — сохранение файлов
+- exceljs — экспорт в Excel
+- @types/file-saver
+
+**Сборка:** Проект успешно собирается (npm run build).
+
+**Следующие шаги:**
+1. Доработать UI/UX (анимации, адаптивность)
+2. Добавить страницу настроек для админа
+3. Реализовать управление участниками простоя
+4. Добавить графики/дашборд
+5. Тестирование всех функций
+6. Подготовка к переезду на этап 2 (Oracle Linux + БД СААРЦ)
+
+---
+
 ## Архитектурные решения (накопительный список)
 
 | # | Решение | Обоснование | Дата |
