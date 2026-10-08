@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, typ
 import type {
   User, ConsolidatedDowntime, IncidentInvestigation, ChatMessage,
   Notification, AuditLog, AttachedFile, DowntimeFilters, GroupingMode,
-  DowntimeStatus, DowntimeRecord,
+  DowntimeStatus, DowntimeRecord, Report,
 } from '../types';
 import { createDataSource, groupRecords } from '../services/dataSource';
 import { MOCK_USERS, generateMockInvestigation, generateMockMessages } from '../data/mockData';
@@ -22,16 +22,20 @@ interface AppState {
   theme: Theme;
   toggleTheme: () => void;
 
-  // Downtimes
-  consolidatedDowntimes: ConsolidatedDowntime[];
+  // Reports (основная сущность!)
+  reports: Report[];
   isLoading: boolean;
-  loadDowntimes: (filters: DowntimeFilters, mode: GroupingMode) => Promise<void>;
-  updateDowntimeStatus: (id: string, status: DowntimeStatus) => void;
-  updateDowntimeTitle: (id: string, title: string) => void;
-  deleteDowntime: (id: string) => void;
-  mergeDowntimes: (ids: string[]) => void;
-  updateRecord: (downtimeId: string, recordId: string, updates: Partial<DowntimeRecord>) => void;
-  deleteRecord: (downtimeId: string, recordId: string) => void;
+  createReport: (filters: DowntimeFilters, mode: GroupingMode, name?: string) => Promise<Report>;
+  deleteReport: (id: string) => void;
+  updateReportName: (id: string, name: string) => void;
+
+  // Downtimes внутри отчёта
+  updateDowntimeStatus: (reportId: string, downtimeId: string, status: DowntimeStatus) => void;
+  updateDowntimeTitle: (reportId: string, downtimeId: string, title: string) => void;
+  deleteDowntime: (reportId: string, downtimeId: string) => void;
+  mergeDowntimes: (reportId: string, ids: string[]) => void;
+  updateRecord: (reportId: string, downtimeId: string, recordId: string, updates: Partial<DowntimeRecord>) => void;
+  deleteRecord: (reportId: string, downtimeId: string, recordId: string) => void;
 
   // Investigation
   investigations: Record<string, IncidentInvestigation>;
@@ -71,11 +75,11 @@ export function useApp(): AppState {
 
 // === Provider ===
 
-const STORAGE_KEY = 'omk-downtime-portal';
+const STORAGE_KEY = 'omk-downtime-portal-v2';
 
 interface PersistedState {
   theme: Theme;
-  consolidatedDowntimes: ConsolidatedDowntime[];
+  reports: Report[];
   investigations: Record<string, IncidentInvestigation>;
   messages: Record<string, ChatMessage[]>;
   notifications: Notification[];
@@ -105,9 +109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(
     persisted?.currentUserId ? MOCK_USERS.find((u) => u.id === persisted.currentUserId) || null : null
   );
-  const [consolidatedDowntimes, setConsolidatedDowntimes] = useState<ConsolidatedDowntime[]>(
-    persisted?.consolidatedDowntimes || []
-  );
+  const [reports, setReports] = useState<Report[]>(persisted?.reports || []);
   const [investigations, setInvestigations] = useState<Record<string, IncidentInvestigation>>(
     persisted?.investigations || {}
   );
@@ -125,7 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     savePersisted({
       theme,
-      consolidatedDowntimes,
+      reports,
       investigations,
       messages,
       notifications,
@@ -133,7 +135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       auditLogs,
       currentUserId: currentUser?.id || null,
     });
-  }, [theme, consolidatedDowntimes, investigations, messages, notifications, files, auditLogs, currentUser]);
+  }, [theme, reports, investigations, messages, notifications, files, auditLogs, currentUser]);
 
   // Apply theme to HTML
   useEffect(() => {
@@ -169,10 +171,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCurrentUser(null);
   }, [currentUser]);
 
-  // === Downtimes ===
+  // === Reports ===
   const dataSource = React.useMemo(() => createDataSource(), []);
 
-  const loadDowntimes = useCallback(async (filters: DowntimeFilters, mode: GroupingMode) => {
+  // Формирование отчёта — ключевая операция!
+  const createReport = useCallback(async (
+    filters: DowntimeFilters,
+    mode: GroupingMode,
+    name?: string
+  ): Promise<Report> => {
     setIsLoading(true);
     try {
       const from = new Date(filters.dateFrom);
@@ -181,69 +188,145 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const records = await dataSource.getDowntimeRecords(from, to, filters.shop);
       let grouped = groupRecords(records, mode);
 
-      // Apply filters
+      // Фильтр по участку
       if (filters.section) {
         grouped = grouped.filter((g) => g.section === filters.section);
       }
-      if (filters.status) {
-        grouped = grouped.filter((g) => g.status === filters.status);
+
+      const report: Report = {
+        id: uuid(),
+        name: name || `Отчёт от ${new Date().toLocaleDateString('ru-RU')}`,
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser?.id || 'unknown',
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        shop: filters.shop,
+        section: filters.section,
+        groupingMode: mode,
+        downtimes: grouped,
+        totalDuration: grouped.reduce((s, d) => s + d.totalDuration, 0),
+        totalRecords: grouped.reduce((s, d) => s + d.records.length, 0),
+        status: 'draft',
+      };
+
+      setReports((prev) => [report, ...prev]);
+
+      if (currentUser) {
+        setAuditLogs((prev) => [...prev, {
+          id: uuid(), userId: currentUser.id, action: 'investigation_save',
+          details: `Сформирован отчёт "${report.name}" (${grouped.length} простоев)`,
+          createdAt: new Date().toISOString(),
+        }]);
       }
 
-      setConsolidatedDowntimes(grouped);
+      return report;
     } finally {
       setIsLoading(false);
     }
-  }, [dataSource]);
+  }, [dataSource, currentUser]);
 
-  const updateDowntimeStatus = useCallback((id: string, status: DowntimeStatus) => {
-    setConsolidatedDowntimes((prev) =>
-      prev.map((d) => d.id === id ? { ...d, status, updatedAt: new Date().toISOString() } : d)
+  const deleteReport = useCallback((id: string) => {
+    setReports((prev) => prev.filter((r) => r.id !== id));
+    if (currentUser) {
+      setAuditLogs((prev) => [...prev, {
+        id: uuid(), userId: currentUser.id, action: 'record_delete',
+        details: `Удалён отчёт`, downtimeId: id, createdAt: new Date().toISOString(),
+      }]);
+    }
+  }, [currentUser]);
+
+  const updateReportName = useCallback((id: string, name: string) => {
+    setReports((prev) =>
+      prev.map((r) => r.id === id ? { ...r, name } : r)
+    );
+  }, []);
+
+  // === Downtimes внутри отчёта ===
+  const updateDowntimeStatus = useCallback((reportId: string, downtimeId: string, status: DowntimeStatus) => {
+    setReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        return {
+          ...r,
+          downtimes: r.downtimes.map((d) =>
+            d.id === downtimeId ? { ...d, status, updatedAt: new Date().toISOString() } : d
+          ),
+        };
+      })
     );
     if (currentUser) {
       setAuditLogs((prev) => [...prev, {
         id: uuid(), userId: currentUser.id, action: 'status_change',
-        details: `Статус изменён на "${status}"`, downtimeId: id, createdAt: new Date().toISOString(),
+        details: `Статус изменён на "${status}"`, downtimeId, createdAt: new Date().toISOString(),
       }]);
     }
   }, [currentUser]);
 
-  const updateDowntimeTitle = useCallback((id: string, title: string) => {
-    setConsolidatedDowntimes((prev) =>
-      prev.map((d) => d.id === id ? { ...d, title, updatedAt: new Date().toISOString() } : d)
+  const updateDowntimeTitle = useCallback((reportId: string, downtimeId: string, title: string) => {
+    setReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        return {
+          ...r,
+          downtimes: r.downtimes.map((d) =>
+            d.id === downtimeId ? { ...d, title, updatedAt: new Date().toISOString() } : d
+          ),
+        };
+      })
     );
   }, []);
 
-  const deleteDowntime = useCallback((id: string) => {
-    setConsolidatedDowntimes((prev) => prev.filter((d) => d.id !== id));
+  const deleteDowntime = useCallback((reportId: string, downtimeId: string) => {
+    setReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        const newDowntimes = r.downtimes.filter((d) => d.id !== downtimeId);
+        return {
+          ...r,
+          downtimes: newDowntimes,
+          totalDuration: newDowntimes.reduce((s, d) => s + d.totalDuration, 0),
+          totalRecords: newDowntimes.reduce((s, d) => s + d.records.length, 0),
+        };
+      })
+    );
     if (currentUser) {
       setAuditLogs((prev) => [...prev, {
         id: uuid(), userId: currentUser.id, action: 'record_delete',
-        details: `Удалён сводный простой`, downtimeId: id, createdAt: new Date().toISOString(),
+        details: `Удалён сводный простой`, downtimeId, createdAt: new Date().toISOString(),
       }]);
     }
   }, [currentUser]);
 
-  const mergeDowntimes = useCallback((ids: string[]) => {
+  const mergeDowntimes = useCallback((reportId: string, ids: string[]) => {
     if (ids.length < 2) return;
-    setConsolidatedDowntimes((prev) => {
-      const toMerge = prev.filter((d) => ids.includes(d.id));
-      const rest = prev.filter((d) => !ids.includes(d.id));
-      const allRecords = toMerge.flatMap((d) => d.records);
-      const merged: ConsolidatedDowntime = {
-        id: uuid(),
-        title: 'Объединённый простой',
-        date: toMerge[0]?.date || new Date().toISOString().split('T')[0],
-        shop: toMerge[0]?.shop || '',
-        section: toMerge[0]?.section || '',
-        records: allRecords,
-        totalDuration: allRecords.reduce((s, r) => s + r.duration, 0),
-        status: 'new',
-        participants: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      return [...rest, merged];
-    });
+    setReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        const toMerge = r.downtimes.filter((d) => ids.includes(d.id));
+        const rest = r.downtimes.filter((d) => !ids.includes(d.id));
+        const allRecords = toMerge.flatMap((d) => d.records);
+        const merged: ConsolidatedDowntime = {
+          id: uuid(),
+          title: 'Объединённый простой',
+          date: toMerge[0]?.date || new Date().toISOString().split('T')[0],
+          shop: toMerge[0]?.shop || '',
+          section: toMerge[0]?.section || '',
+          records: allRecords,
+          totalDuration: allRecords.reduce((s, rec) => s + rec.duration, 0),
+          status: 'new',
+          participants: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        const newDowntimes = [...rest, merged];
+        return {
+          ...r,
+          downtimes: newDowntimes,
+          totalDuration: newDowntimes.reduce((s, d) => s + d.totalDuration, 0),
+          totalRecords: newDowntimes.reduce((s, d) => s + d.records.length, 0),
+        };
+      })
+    );
     if (currentUser) {
       setAuditLogs((prev) => [...prev, {
         id: uuid(), userId: currentUser.id, action: 'merge',
@@ -252,24 +335,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [currentUser]);
 
-  const updateRecord = useCallback((downtimeId: string, recordId: string, updates: Partial<DowntimeRecord>) => {
-    setConsolidatedDowntimes((prev) =>
-      prev.map((d) => {
-        if (d.id !== downtimeId) return d;
-        const newRecords = d.records.map((r) => r.id === recordId ? { ...r, ...updates } : r);
-        const totalDuration = newRecords.reduce((s, r) => s + r.duration, 0);
-        return { ...d, records: newRecords, totalDuration, updatedAt: new Date().toISOString() };
+  const updateRecord = useCallback((reportId: string, downtimeId: string, recordId: string, updates: Partial<DowntimeRecord>) => {
+    setReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        return {
+          ...r,
+          downtimes: r.downtimes.map((d) => {
+            if (d.id !== downtimeId) return d;
+            const newRecords = d.records.map((rec) => rec.id === recordId ? { ...rec, ...updates } : rec);
+            const totalDuration = newRecords.reduce((s, rec) => s + rec.duration, 0);
+            return { ...d, records: newRecords, totalDuration, updatedAt: new Date().toISOString() };
+          }),
+        };
       })
     );
   }, []);
 
-  const deleteRecord = useCallback((downtimeId: string, recordId: string) => {
-    setConsolidatedDowntimes((prev) =>
-      prev.map((d) => {
-        if (d.id !== downtimeId) return d;
-        const newRecords = d.records.filter((r) => r.id !== recordId);
-        const totalDuration = newRecords.reduce((s, r) => s + r.duration, 0);
-        return { ...d, records: newRecords, totalDuration, updatedAt: new Date().toISOString() };
+  const deleteRecord = useCallback((reportId: string, downtimeId: string, recordId: string) => {
+    setReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        return {
+          ...r,
+          downtimes: r.downtimes.map((d) => {
+            if (d.id !== downtimeId) return d;
+            const newRecords = d.records.filter((rec) => rec.id !== recordId);
+            const totalDuration = newRecords.reduce((s, rec) => s + rec.duration, 0);
+            return { ...d, records: newRecords, totalDuration, updatedAt: new Date().toISOString() };
+          }),
+        };
       })
     );
     if (currentUser) {
@@ -310,12 +405,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...prev,
       [downtimeId]: [...(prev[downtimeId] || []), msg],
     }));
-    if (currentUser) {
-      setAuditLogs((prev) => [...prev, {
-        id: uuid(), userId: currentUser.id, action: 'comment_add',
-        details: `Добавлен комментарий`, downtimeId, createdAt: new Date().toISOString(),
-      }]);
-    }
+    setAuditLogs((prev) => [...prev, {
+      id: uuid(), userId: currentUser.id, action: 'comment_add',
+      details: `Добавлен комментарий`, downtimeId, createdAt: new Date().toISOString(),
+    }]);
   }, [currentUser]);
 
   // === Notifications ===
@@ -328,9 +421,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [currentUser]);
 
-  const addNotification = useCallback((userId: string, downtimeId: string, type: Notification['type'], message: string) => {
+  const addNotification = useCallback((_userId: string, _downtimeId: string, _type: Notification['type'], _message: string) => {
     const n: Notification = {
-      id: uuid(), userId, downtimeId, type, message,
+      id: uuid(), userId: _userId, downtimeId: _downtimeId, type: _type, message: _message,
       isRead: false, createdAt: new Date().toISOString(),
     };
     setNotifications((prev) => [...prev, n]);
@@ -371,17 +464,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Initialize messages for existing downtimes
   useEffect(() => {
-    for (const d of consolidatedDowntimes) {
-      if (!messages[d.id]) {
-        setMessages((prev) => ({ ...prev, [d.id]: generateMockMessages(d.id) }));
+    for (const report of reports) {
+      for (const d of report.downtimes) {
+        if (!messages[d.id]) {
+          setMessages((prev) => ({ ...prev, [d.id]: generateMockMessages(d.id) }));
+        }
       }
     }
-  }, [consolidatedDowntimes.length]);
+  }, [reports.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: AppState = {
     currentUser, login, logout,
     theme, toggleTheme,
-    consolidatedDowntimes, isLoading, loadDowntimes,
+    reports, isLoading, createReport, deleteReport, updateReportName,
     updateDowntimeStatus, updateDowntimeTitle, deleteDowntime, mergeDowntimes,
     updateRecord, deleteRecord,
     investigations, getInvestigation, saveInvestigation,

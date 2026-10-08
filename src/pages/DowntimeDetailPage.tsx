@@ -13,21 +13,25 @@ import AuditTab from '../components/AuditTab';
 type Tab = 'details' | 'investigation' | 'chat' | 'files' | 'audit';
 
 export default function DowntimeDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { reportId, downtimeId } = useParams<{ reportId: string; downtimeId: string }>();
   const navigate = useNavigate();
-  const { consolidatedDowntimes, updateDowntimeStatus, updateDowntimeTitle, currentUser, updateRecord, deleteRecord } = useApp();
+  const { reports, updateDowntimeStatus, updateDowntimeTitle, currentUser, updateRecord, deleteRecord } = useApp();
   const [activeTab, setActiveTab] = useState<Tab>('details');
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [editingRecord, setEditingRecord] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<DowntimeRecord>>({});
 
-  const downtime = consolidatedDowntimes.find((d) => d.id === id);
-  if (!downtime) {
+  const report = reports.find((r) => r.id === reportId);
+  const downtime = report?.downtimes.find((d) => d.id === downtimeId);
+
+  if (!report || !downtime) {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500 dark:text-gray-400">Простой не найден</p>
-        <button onClick={() => navigate('/')} className="mt-4 text-blue-600 hover:underline">← Назад к списку</button>
+        <button onClick={() => navigate(`/report/${reportId}`)} className="mt-4 text-blue-600 hover:underline">
+          ← Назад к отчёту
+        </button>
       </div>
     );
   }
@@ -38,7 +42,7 @@ export default function DowntimeDetailPage() {
   };
 
   const saveTitle = () => {
-    updateDowntimeTitle(downtime.id, titleValue);
+    updateDowntimeTitle(report.id, downtime.id, titleValue);
     setEditingTitle(false);
   };
 
@@ -49,7 +53,7 @@ export default function DowntimeDetailPage() {
 
   const saveRecord = () => {
     if (editingRecord && editValues) {
-      updateRecord(downtime.id, editingRecord, editValues);
+      updateRecord(report.id, downtime.id, editingRecord, editValues);
       setEditingRecord(null);
     }
   };
@@ -64,9 +68,18 @@ export default function DowntimeDetailPage() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumbs */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <button onClick={() => navigate('/')} className="hover:text-blue-600">Отчёты</button>
+        <span>/</span>
+        <button onClick={() => navigate(`/report/${report.id}`)} className="hover:text-blue-600">{report.name}</button>
+        <span>/</span>
+        <span className="text-gray-900 dark:text-white">{downtime.title}</span>
+      </div>
+
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/')} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+        <button onClick={() => navigate(`/report/${report.id}`)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
           <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-300" />
         </button>
         <div className="flex-1">
@@ -110,7 +123,7 @@ export default function DowntimeDetailPage() {
           {currentUser?.role === 'admin' && (
             <select
               value={downtime.status}
-              onChange={(e) => updateDowntimeStatus(downtime.id, e.target.value as DowntimeStatus)}
+              onChange={(e) => updateDowntimeStatus(report.id, downtime.id, e.target.value as DowntimeStatus)}
               className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
             >
               {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -203,7 +216,7 @@ export default function DowntimeDetailPage() {
                             {currentUser?.role === 'admin' && (
                               <>
                                 <button onClick={() => startEditRecord(r)} className="p-1 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => { if (confirm('Удалить запись?')) deleteRecord(downtime.id, r.id); }} className="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => { if (confirm('Удалить запись?')) deleteRecord(report.id, downtime.id, r.id); }} className="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
                               </>
                             )}
                           </div>

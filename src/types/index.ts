@@ -186,3 +186,24 @@ export interface DowntimeFilters {
 }
 
 export type GroupingMode = 'by-shop-period' | 'all-in-one';
+
+// === Отчёт (сформированный документ) ===
+
+export interface Report {
+  id: string;
+  name: string; // название отчёта (редактируемое)
+  createdAt: string;
+  createdBy: string; // user ID
+  // Параметры формирования
+  dateFrom: string;
+  dateTo: string;
+  shop?: string; // полное название
+  section?: string;
+  groupingMode: GroupingMode;
+  // Сформированные данные
+  downtimes: ConsolidatedDowntime[];
+  // Метаданные
+  totalDuration: number;
+  totalRecords: number;
+  status: 'draft' | 'final';
+}

@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './store/AppContext';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './pages/LoginPage';
 import ReportPage from './pages/ReportPage';
+import ReportViewPage from './pages/ReportViewPage';
 import DowntimeDetailPage from './pages/DowntimeDetailPage';
 import InvestigationsPage from './pages/InvestigationsPage';
 import AuditPage from './pages/AuditPage';
@@ -31,7 +32,8 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<ReportPage />} />
-        <Route path="/downtime/:id" element={<DowntimeDetailPage />} />
+        <Route path="/report/:reportId" element={<ReportViewPage />} />
+        <Route path="/report/:reportId/downtime/:downtimeId" element={<DowntimeDetailPage />} />
         <Route path="/investigations" element={<InvestigationsPage />} />
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/users" element={<UsersPage />} />
